@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Cluely Web — AI Meeting Coach</title>
+    <style>
+        .overlay {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            width: 380px;
+            background: rgba(10, 10, 10, 0.95);
+            backdrop-filter: blur(10px);
+            border: 1px solid #333;
+            border-radius: 12px;
+            padding: 15px;
+            color: white;
+            font-family: 'Segoe UI', sans-serif;
+            z-index: 99999;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+        }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .header span { font-weight: bold; color: #00ff9d; }
+        #closeBtn { background: none; border: none; color: white; font-size: 20px; cursor: pointer; }
+        .suggestion-box {
+            min-height: 60px;
+            background: #1a1a1a;
+            padding: 10px;
+            border-radius: 8px;
+            margin: 10px 0;
+            font-size: 14px;
+            line-height: 1.4;
+        }
+        .button-row { display: flex; gap: 5px; flex-wrap: wrap; }
+        .button-row button {
+            flex: 1;
+            min-width: 100px;
+            padding: 8px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        #acceptBtn { background: #2a2a2a; color: #00ff9d; }
+        #dismissBtn { background: #2a2a2a; color: #ff5555; }
+        #askBtn { background: #2a2a2a; color: #55aaff; }
+        .status-bar { font-size: 11px; color: #888; margin-top: 10px; }
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.7);
+            z-index: 100000;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal-content {
+            background: #1a1a1a;
+            padding: 20px;
+            border-radius: 10px;
+            width: 90%;
+            max-width: 500px;
+            text-align: center;
+        }
+        #askInput {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            border: 1px solid #444;
+            background: #2a2a2a;
+            color: white;
+            border-radius: 5px;
+            font-size: 16px;
+        }
+        .modal-buttons {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+        }
+        .modal-buttons button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        .modal-buttons button:first-child {
+            background: #00ff9d;
+            color: #000;
+        }
+        .modal-buttons button:last-child {
+            background: #555;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <div id="overlay" class="overlay">
+        <div class="header">
+            <span>💡 Cluely Web</span>
+            <button id="closeBtn">×</button>
+        </div>
+        <div id="suggestionBox" class="suggestion-box">
+            Press Ctrl+Shift+O to start coaching
+        </div>
+        <div class="button-row">
+            <button id="acceptBtn">✅ Accept (Ctrl+Enter)</button>
+            <button id="dismissBtn">❌ Dismiss (Esc)</button>
+            <button id="askBtn">❓ Ask Anything (Ctrl+Shift+A)</button>
+        </div>
+        <div class="status-bar">
+            Status: <span id="status">Ready</span>
+        </div>
+    </div>
+
+    <div id="askModal" class="modal">
+        <div class="modal-content">
+            <h3>Ask Cluely Anything</h3>
+            <input type="text" id="askInput" placeholder="Type your question..." autofocus>
+            <div class="modal-buttons">
+                <button id="askSubmit">Ask</button>
+                <button id="askCancel">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // DOM Elements
+        const overlay = document.getElementById('overlay');
+        const suggestionBox = document.getElementById('suggestionBox');
+        const statusSpan = document.getElementById('status');
+        const closeBtn = document.getElementById('closeBtn');
+        const acceptBtn = document.getElementById('acceptBtn');
+        const dismissBtn = document.getElementById('dismissBtn');
+        const askBtn = document.getElementById('askBtn');
+        const askModal = document.getElementById('askModal');
+        const askInput = document.getElementById('askInput');
+        const askSubmit = document.getElementById('askSubmit');
+        const askCancel = document.getElementById('askCancel');
+
+        // Toggle Overlay
+        function toggleOverlay() {
+            overlay.style.display = overlay.style.display === 'none' ? 'block' : 'none';
+        }
+
+        // Show Ask Modal
+        function showAskModal() {
+            askModal.style.display = 'flex';
+            askInput.focus();
+        }
+
+        // Hide Ask Modal
+        function hideAskModal() {
+            askModal.style.display = 'none';
+        }
+
+        // Ask Anything
+        async function askAnything(question) {
+            statusSpan.textContent = "🧠 Thinking...";
+            try {
+                const response = await fetch('http://localhost:11434/api/generate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        model: "llama3",
+                        prompt: question
+                    })
+                });
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let fullResponse = "";
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    const chunk = decoder.decode(value);
+                    const lines = chunk.split('\n');
+                    for (let line of lines) {
+                        if (line.trim()) {
+                            try {
+                                const json = JSON.parse(line);
+                                if (json.response) {
+                                    fullResponse += json.response;
+                                    suggestionBox.innerHTML = fullResponse.replace(/\n/g, '<br>');
+                                }
+                            } catch (e) {}
+                        }
+                    }
+                }
+
+                // Speak answer
+                if ('speechSynthesis' in window) {
+                    const utterance = new SpeechSynthesisUtterance(fullResponse);
+                    utterance.rate = 0.9;
+                    speechSynthesis.speak(utterance);
+                }
+
+                statusSpan.textContent = "✅ Answer ready";
+            } catch (error) {
+                statusSpan.textContent = "❌ AI Error (Is Ollama running?)";
+                console.error("AI Error:", error);
+            }
+        }
+
+        // Event Listeners
+        closeBtn.addEventListener('click', toggleOverlay);
+        acceptBtn.addEventListener('click', () => {
+            if (suggestionBox.innerHTML) {
+                document.activeElement?.focus();
+                document.execCommand('insertText', false, suggestionBox.innerHTML + '\n');
+            }
+        });
+        dismissBtn.addEventListener('click', () => {
+            suggestionBox.innerHTML = "Suggestion dismissed.";
+        });
+        askBtn.addEventListener('click', showAskModal);
+        askSubmit.addEventListener('click', () => {
+            const question = askInput.value.trim();
+            if (question) {
+                hideAskModal();
+                askAnything(question);
+            }
+        });
+        askCancel.addEventListener('click', hideAskModal);
+
+        // Hotkeys
+        document.addEventListener('keydown', (e) => {
+            if (e.ctrlKey && e.shiftKey && e.key === 'O') {
+                e.preventDefault();
+                toggleOverlay();
+            }
+            if (e.ctrlKey && e.shiftKey && e.key === 'A') {
+                e.preventDefault();
+                showAskModal();
+            }
+            if (e.ctrlKey && e.key === 'Enter') {
+                e.preventDefault();
+                if (suggestionBox.innerHTML) {
+                    document.activeElement?.focus();
+                    document.execCommand('insertText', false, suggestionBox.innerHTML + '\n');
+                }
+            }
+            if (e.key === 'Escape') {
+                if (askModal.style.display === 'flex') {
+                    hideAskModal();
+                } else {
+                    suggestionBox.innerHTML = "Suggestion dismissed.";
+                }
+            }
+        });
+
+        // Initialize
+        console.log("✅ Cluely Web loaded. Press Ctrl+Shift+O to start.");
+        statusSpan.textContent = "✅ Ready. Press Ctrl+Shift+O to start coaching.";
+        overlay.style.display = 'none'; // Start hidden
+    </script>
+</body>
+</html>
